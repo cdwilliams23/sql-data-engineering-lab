@@ -1,0 +1,11 @@
+USE SQLDataEngineeringLab;
+GO
+
+CREATE SCHEMA src;
+GO
+CREATE SCHEMA stg;
+GO
+CREATE SCHEMA rpt;
+GO
+CREATE SCHEMA etl;
+GO
