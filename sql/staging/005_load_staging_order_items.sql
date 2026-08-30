@@ -41,3 +41,4 @@ WHERE NOT EXISTS (SELECT 1 FROM
 				  stg.OrderItems si
 				  WHERE si.OrderItemId = oi.OrderItemId
 				  )
+GO
