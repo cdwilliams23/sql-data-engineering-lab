@@ -49,3 +49,4 @@ LEFT OUTER JOIN (
 WHERE NOT EXISTS (SELECT 1 FROM
                 stg.Customers sc
                 WHERE sc.CustomerId = c.CustomerId)
+GO
