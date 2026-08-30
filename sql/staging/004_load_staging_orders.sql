@@ -49,3 +49,4 @@ on o.CustomerId = c.CustomerId
 WHERE NOT EXISTS ( SELECT 1 FROM
 				   stg.Orders so
 				   WHERE so.OrderId = o.OrderId)
+GO
