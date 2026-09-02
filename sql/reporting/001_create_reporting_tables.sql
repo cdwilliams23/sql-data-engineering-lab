@@ -3,12 +3,22 @@ GO
 
 CREATE TABLE rpt.DimCustomer (
     CustomerKey INT IDENTITY(1,1) PRIMARY KEY,
-    CustomerId INT NOT NULL UNIQUE,
+    CustomerId INT NOT NULL,
     FirstName VARCHAR(100) NULL,
     LastName VARCHAR(100) NOT NULL,
     Email VARCHAR(255) NULL,
-    CreatedDate DATETIME2 NOT NULL
+    CreatedDate DATETIME2 NOT NULL,
+    EffectiveFrom DATETIME2 NOT NULL
+        CONSTRAINT DF_DimCustomer_EffectiveFrom DEFAULT SYSDATETIME(),
+    EffectiveTo DATETIME2 NULL,
+    IsCurrent BIT NOT NULL
+        CONSTRAINT DF_DimCustomer_IsCurrent DEFAULT 1
 );
+GO
+
+CREATE UNIQUE INDEX UX_DimCustomer_CustomerId_IsCurrent
+ON rpt.DimCustomer(CustomerId)
+WHERE IsCurrent = 1;
 GO
 
 CREATE TABLE rpt.DimProduct (
