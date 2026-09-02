@@ -4,11 +4,11 @@ GO
 INSERT INTO src.Customers
     (CustomerId, FirstName, LastName, Email, CreatedDate)
 VALUES
-    (1001, 'Andre', 'Brown', 'andre.brown@email.com', '2026-01-05 09:15:00'),
-    (1002, 'Melissa', 'Grant', 'MELISSA.GRANT@email.com', '2026-01-08 14:22:00'),
-    (1003, 'Kevin', 'Campbell', ' kevin.campbell@email.com ', '2026-01-12 11:05:00'),
-    (1004, NULL, 'Williams', 'dwilliams@email.com', '2026-01-17 16:40:00'),
-    (1005, 'Samantha', 'Reid', NULL, '2026-01-20 08:30:00');
+    (1001, 'Andre', 'Brown', 'andre.brown@email.com', '2016-03-12 09:15:00'),
+    (1002, 'Melissa', 'Grant', 'MELISSA.GRANT@email.com', '2017-08-21 14:22:00'),
+    (1003, 'Kevin', 'Campbell', ' kevin.campbell@email.com ', '2018-05-04 11:05:00'),
+    (1004, NULL, 'Williams', 'dwilliams@email.com', '2019-11-18 16:40:00'),
+    (1005, 'Samantha', 'Reid', NULL, '2020-02-09 08:30:00');
 GO
 
 INSERT INTO src.Products
