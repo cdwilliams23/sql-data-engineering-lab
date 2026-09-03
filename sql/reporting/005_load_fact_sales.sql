@@ -49,6 +49,11 @@ INNER JOIN rpt.DimCustomer c
     )
 INNER JOIN rpt.DimProduct p
     ON oi.ProductId = p.ProductId
+    AND o.OrderDate >= p.EffectiveFrom
+    AND (
+        o.OrderDate < p.EffectiveTo
+        OR p.EffectiveTo IS NULL
+    )
 INNER JOIN rpt.DimDate d
     ON CAST(o.OrderDate AS DATE) = d.FullDate
 
@@ -118,4 +123,3 @@ BEGIN CATCH
     THROW;
 END CATCH;
 GO
-
