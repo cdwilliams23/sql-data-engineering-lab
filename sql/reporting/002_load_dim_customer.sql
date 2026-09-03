@@ -62,7 +62,7 @@ WHERE dc.IsCurrent = 1
       OR ISNULL(dc.Email, '') <> ISNULL(cc.Email, '')
   );
 
---Insert new current version
+--Insert new versions of existing customers
 INSERT INTO rpt.DimCustomer
 (
     CustomerId,
@@ -85,10 +85,49 @@ SELECT
     1
 
 FROM #CustomerCurrent cc
-WHERE NOT EXISTS (SELECT 1 FROM
-                  rpt.DimCustomer dc
-                  WHERE dc.CustomerId = cc.CustomerId
-                  AND dc.IsCurrent = 1)
+WHERE EXISTS
+(
+    SELECT 1
+    FROM rpt.DimCustomer dc
+    WHERE dc.CustomerId = cc.CustomerId
+)
+AND NOT EXISTS
+(
+    SELECT 1
+    FROM rpt.DimCustomer dc
+    WHERE dc.CustomerId = cc.CustomerId
+      AND dc.IsCurrent = 1
+);
+
+--Insert new customers
+INSERT INTO rpt.DimCustomer
+(
+    CustomerId,
+    FirstName,
+    LastName,
+    Email,
+    CreatedDate,
+    EffectiveFrom,
+    EffectiveTo,
+    IsCurrent
+)
+SELECT
+    cc.CustomerId,
+    cc.FirstName,
+    cc.LastName,
+    cc.Email,
+    cc.CreatedDate,
+    cc.CreatedDate,
+    NULL,
+    1
+
+FROM #CustomerCurrent cc
+WHERE NOT EXISTS
+(
+    SELECT 1
+    FROM rpt.DimCustomer dc
+    WHERE dc.CustomerId = cc.CustomerId
+);
 
      COMMIT TRANSACTION;
 END TRY

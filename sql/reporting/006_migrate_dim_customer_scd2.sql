@@ -43,8 +43,15 @@ ADD
         CONSTRAINT DF_DimCustomer_IsCurrent DEFAULT 1;
 GO
 
+-- The existing dimension row represents the first known version of each customer.
+-- Use the customer's business CreatedDate as the beginning of that version.
+UPDATE rpt.DimCustomer
+SET EffectiveFrom = CreatedDate;
+GO
 
---create filtered unique index to prevent multiple instances of IsCurrent = 1
+
+-- Create filtered unique index to prevent multiple current rows
+-- for the same CustomerId.
 CREATE UNIQUE INDEX UX_DimCustomer_CustomerId_IsCurrent
 ON rpt.DimCustomer(CustomerId)
 WHERE IsCurrent = 1;
