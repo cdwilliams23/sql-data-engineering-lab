@@ -23,12 +23,22 @@ GO
 
 CREATE TABLE rpt.DimProduct (
     ProductKey INT IDENTITY(1,1) PRIMARY KEY,
-    ProductId INT NOT NULL UNIQUE,
+    ProductId INT NOT NULL,
     ProductName VARCHAR(255) NOT NULL,
     Category VARCHAR(100) NOT NULL,
     Price DECIMAL(10,2) NOT NULL,
-    CreationDate DATETIME2 NOT NULL
+    CreationDate DATETIME2 NOT NULL,
+    EffectiveFrom DATETIME2 NOT NULL
+        CONSTRAINT DF_DimProduct_EffectiveFrom DEFAULT SYSDATETIME(),
+    EffectiveTo DATETIME2 NULL,
+    IsCurrent BIT NOT NULL
+        CONSTRAINT DF_DimProduct_IsCurrent DEFAULT 1
 );
+GO
+
+CREATE UNIQUE INDEX UX_DimProduct_ProductId_IsCurrent
+ON rpt.DimProduct(ProductId)
+WHERE IsCurrent = 1;
 GO
 
 CREATE TABLE rpt.DimDate (
