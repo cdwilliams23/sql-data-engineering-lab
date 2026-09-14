@@ -1,0 +1,15 @@
+USE SQLDataEngineeringLab;
+GO
+
+CREATE TABLE etl.ETLRun
+(
+	RunId INT IDENTITY(1,1) PRIMARY KEY,
+	StartTime DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+	EndTime DATETIME2 NULL,
+	[Status] VARCHAR(20) NOT NULL DEFAULT 'Running',
+	ErrorMessage VARCHAR(4000) NULL,
+
+	CONSTRAINT CHK_ETLRun_Status
+		CHECK ([Status] IN ('Running', 'Failed', 'Success'))
+);
+GO
