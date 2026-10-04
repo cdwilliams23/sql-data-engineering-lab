@@ -1,0 +1,19 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Jupyter-generated state
+.ipynb_checkpoints/
+
+# Spark-generated local state
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Generated financial pipeline outputs
+financial-pipeline/data/bronze/
+financial-pipeline/data/output/
+financial-pipeline/data/checkpoints/
