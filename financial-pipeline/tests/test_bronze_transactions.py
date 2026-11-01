@@ -89,6 +89,18 @@ class BronzeTransactionsIntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(argparse.ArgumentTypeError, "YYYY-MM-DD"):
             parse_batch_date("2026/09/01")
 
+    def test_rejects_noncanonical_batch_date(self):
+        with self.assertRaises(argparse.ArgumentTypeError):
+            parse_batch_date("20260901")
+
+        with self.assertRaises(argparse.ArgumentTypeError):
+            parse_batch_date("2026-W36-2")
+
+    def test_accepts_valid_batch_dates(self):
+        first_date = parse_batch_date("2026-09-01")
+        second_date = parse_batch_date("2024-02-29")
+        self.assertEqual(first_date, date(2026, 9, 1))
+        self.assertEqual(second_date, date(2024, 2, 29))
 
 if __name__ == "__main__":
     unittest.main()
