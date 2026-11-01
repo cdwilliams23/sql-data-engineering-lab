@@ -44,7 +44,11 @@ def parse_batch_date(value: str) -> date:
         raise argparse.ArgumentTypeError(
             f"Invalid batch date '{value}'. Expected YYYY-MM-DD."
         ) from exc
-
+    if value != parsed.isoformat():
+        raise argparse.ArgumentTypeError(
+            f"Invalid batch date '{value}'. Expected YYYY-MM-DD."
+        )
+    return parsed
 
 def resolve_project_path(value: str | Path) -> Path:
     """Resolve relative CLI paths from the repository root, not the caller CWD."""
