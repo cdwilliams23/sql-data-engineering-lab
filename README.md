@@ -8,7 +8,7 @@ The repository began as a SQL Server ETL lab and now extends those data-engineer
 
 The SQL Server implementation loads source data through `src`, `stg`, and `rpt` schemas, including validation, change detection, SCD Type 2 dimensions, fact loading, ETL run tracking, and transactional orchestration.
 
-The PySpark implementation currently provides **Bronze v1**. Transaction CSV files are loaded with an explicit schema, preserved as source-faithful nullable strings, enriched with audit metadata, and persisted as batch-partitioned Parquet. Rerunning a batch replaces only that batch partition. Silver validation and Gold analytical datasets are intentionally deferred.
+The PySpark implementation follows a medallion-style architecture. Bronze ingestion loads transaction CSV files using an explicit schema, preserves source values as nullable strings, adds audit metadata, and persists batch-partitioned Parquet with rerun-safe overwrite behavior. Silver transformations parse and normalize transaction fields, apply data-quality validation rules, identify duplicate transaction IDs, separate accepted and rejected records, generate structured rejection reasons, and reconcile record counts. Silver Parquet persistence is currently under development. Gold analytical datasets and end-to-end PySpark orchestration remain planned.
 
 ## Current status
 
@@ -21,9 +21,13 @@ The PySpark implementation currently provides **Bronze v1**. Transaction CSV fil
 | Bronze CSV ingestion | Validated under WSL/Linux | Configurable file/directory ingestion with explicit header validation |
 | Bronze audit metadata | Validated under WSL/Linux | `SourceFile`, `IngestedAtUtc`, and `BatchDate` |
 | Bronze persistence and rerun safety | Validated under WSL/Linux | Batch-specific Parquet output written with overwrite only at `BatchDate=YYYY-MM-DD`; same-batch reruns preserve sibling batch partitions |
-| Bronze automated validation | Validated under WSL/Linux | `financial-pipeline/tests/test_bronze_transactions.py` passes all 3 tests covering schema, metadata, persistence, reruns, partition preservation, and failure cases |
-| Silver transformations | Planned | No Silver transformation code exists yet |
-| Financial data-quality rules | Planned | Malformed values are preserved in Bronze; business validation is deferred to Silver |
+| Bronze automated validation | Validated under WSL/Linux | `financial-pipeline/tests/test_bronze_transactions.py` passes all 5 tests covering schema, metadata, persistence, reruns, partition preservation, and failure cases |
+| Silver transformations | Implemented | `financial-pipeline/src/silver_transactions.py` parses, normalizes, and validates transaction records |
+| Silver data-quality validation | Validated under WSL/Linux | Date, amount, transaction type, transaction ID, and duplicate-ID checks |
+| Silver rejection handling | Implemented | Accepted/rejected record separation with structured rejection reasons |
+| Silver reconciliation | Implemented | Input count must equal accepted plus rejected counts |
+| Silver automated tests | Validated under WSL/Linux | `financial-pipeline/tests/test_silver_transactions.py` includes 9 merged transformation tests |
+| Silver Parquet persistence | In progress | Batch-scoped accepted/rejected writes and same-batch rerun tests on `feature/pyspark-silver-persistence` |
 | Gold reporting layer | Planned | No financial Gold datasets exist yet |
 | Delta Lake persistence | Planned | Bronze v1 uses local Parquet only |
 | Databricks execution | Planned | Databricks-compatible direction only; not validated on a Databricks workspace |
@@ -34,14 +38,17 @@ The PySpark implementation currently provides **Bronze v1**. Transaction CSV fil
 
 ```mermaid
 flowchart TD
-    A["Transaction CSV files"] --> B["Bronze v1: explicit schema + audit metadata"]
-    B --> C["Local Parquet by BatchDate"]
-    C -. planned .-> D["Silver: standardize, validate, deduplicate"]
-    D -. planned .-> E["Rejected records"]
-    D -. planned .-> F["Gold: analytical and reconciliation datasets"]
+    A["Transaction CSV files"] --> B["Bronze: explicit schema + audit metadata"]
+    B --> C["Bronze Parquet by BatchDate"]
+    C --> D["Silver: parse, normalize, validate"]
+    D --> E["Accepted records"]
+    D --> F["Rejected records + reasons"]
+    E -. persistence in progress .-> G["Silver accepted Parquet"]
+    F -. persistence in progress .-> H["Silver rejected Parquet"]
+    G -. planned .-> I["Gold: analytical datasets"]
 ```
 
-Bronze is deliberately source-faithful. Silver will own business interpretation and data-quality decisions; Gold will own analysis-ready datasets and metrics.
+Bronze preserves source values and ingestion metadata. Silver applies business validation, separates accepted and rejected transactions, records rejection reasons, and reconciles row counts. Batch-scoped Silver Parquet persistence is under development, while Gold will provide analysis-ready datasets and financial metrics.
 
 ## Data model and Bronze behavior
 
@@ -84,9 +91,11 @@ sql-data-engineering-lab/
 │   │       └── transactions/
 │   │           └── transactions_2026-09-01.csv
 │   ├── src/
-│   │   └── bronze_transactions.py
+│   │   ├── bronze_transactions.py
+│   │   └── silver_transactions.py
 │   ├── tests/
-│   │   └── test_bronze_transactions.py
+│   │   ├── test_bronze_transactions.py
+│   │   └── test_silver_transactions.py
 │   └── requirements.txt
 ├── sample-data/
 │   └── 001_seed_source_data.sql
@@ -103,17 +112,18 @@ sql-data-engineering-lab/
 └── README.md
 ```
 
-`financial-pipeline/` contains the financial Bronze milestone. `spark/` contains earlier PySpark learning exercises. The `sql/` and `sample-data/` directories preserve the original SQL Server ETL implementation.
+`financial-pipeline/` contains the financial transaction pipeline, including Bronze ingestion, Silver transformations, automated tests, and local Parquet persistence work. `spark/` contains earlier PySpark learning exercises. The `sql/` and `sample-data/` directories preserve the original SQL Server ETL implementation.
 
 ## Running Bronze locally
 
-The local environment used while developing this PySpark work uses Python 3.13, Java 17, and PySpark 4.2.0. PySpark is pinned in `financial-pipeline/requirements.txt`. Java must be available to Spark through the local environment (`JAVA_HOME` where required).
-Bronze v1 persistence and automated tests were validated under Ubuntu on WSL2 using Python 3.14.4, Java 17.0.20.1, PySpark 4.2.0, and Spark's bundled Hadoop 3.5.0. The unchanged Bronze test suite passed all 3 tests. The included 10-row transaction sample was also persisted successfully, including execution from outside the repository directory, same-batch reruns without duplicate accumulation, and preservation of a second batch partition.
+The financial PySpark pipeline is developed and tested under Ubuntu on WSL2 using Python 3.14.4, Java 17, and PySpark 4.2.0. Dependencies are defined in `financial-pipeline/requirements.txt`. Java must be available to Spark through the local environment (`JAVA_HOME` where required).
 
-From Git Bash, activate the existing virtual environment and install dependencies if needed:
+Bronze ingestion, Parquet persistence, and automated tests have been validated under WSL2/Linux. Silver transformations and their automated tests have also been validated. Silver Parquet persistence is currently being developed and tested separately.
+
+From the repository root in an Ubuntu/WSL terminal, activate the Python virtual environment and install dependencies if needed:
 
 ```bash
-source .venv/Scripts/activate
+source .venv/bin/activate
 python -m pip install -r financial-pipeline/requirements.txt
 ```
 
@@ -137,13 +147,13 @@ financial-pipeline/data/bronze/transactions/
     └── _SUCCESS
 ```
 
-Run the deterministic Bronze tests with the standard-library test runner:
+Run the Bronze and Silver automated tests with Python's standard-library test runner:
 
 ```bash
 python -m unittest discover -s financial-pipeline/tests -p "test_*.py" -v
 ```
 
-The tests use temporary input/output directories and do not depend on the repository's generated Bronze output.
+The automated tests use in-memory DataFrames and temporary input/output directories as appropriate. They do not depend on previously generated Bronze or Silver Parquet output in the repository.
 
 ## Engineering decisions
 
@@ -155,6 +165,10 @@ The tests use temporary input/output directories and do not depend on the reposi
 - **Batch-scoped overwrite.** Rerunning one batch replaces only that batch directory, preventing duplicate accumulation while preserving other batches.
 - **Persist once during count/write validation.** The Bronze DataFrame is persisted while it is counted and written, then explicitly released.
 - **Layer separation.** Bronze ingestion does not trim, cast business fields, deduplicate, perform reference checks, or decide whether a financial record is valid.
+- **Explicit Silver validation.** Transaction dates, amounts, types, and identifiers are validated using defined business rules rather than relying solely on successful type conversion.
+- **Preservation of invalid source evidence.** Silver retains the raw amount value alongside its parsed decimal representation, allowing malformed values and precision violations to be identified.
+- **Structured rejection handling.** Records failing one or more validation rules are separated from accepted records and assigned rejection reason codes for investigation.
+- **Reconciliation as a correctness control.** The Silver transformation verifies that the total input record count equals the sum of accepted and rejected records, raising an error when the counts do not reconcile.
 
 ## Data quality and validation
 
@@ -168,39 +182,49 @@ Bronze performs ingestion-contract and operational validation only:
 - source and persisted row counts must match;
 - automated tests verify source types, audit columns, requested batch date, Parquet read-back, same-batch rerun safety, and preservation of another batch partition.
 
-### Planned for Silver
+### Implemented in Silver
 
-The following are intentionally **not** Bronze rules:
+Silver transformations currently implement:
 
-- required transaction/account identifiers;
-- date parsing and business-valid date ranges;
-- numeric amount parsing and null handling;
-- transaction-type/sign consistency;
-- supported currencies and transaction types;
-- account/customer reference integrity;
-- duplicate transaction detection and deterministic deduplication;
-- accepted/rejected record separation with structured rejection reasons;
-- row-count and control-total reconciliation.
+- Transaction date parsing and validation against the batch date.
+- Decimal amount parsing, positive-amount validation, and rejection of malformed values or excessive decimal precision.
+- Transaction type validation for supported values (`Deposit` and `Withdrawal`).
+- Required transaction ID validation and duplicate transaction ID detection within the processed dataset.
+- Accepted and rejected record separation.
+- Structured rejection reason codes, including support for multiple validation failures on one record.
+- Row-count reconciliation to verify that input records equal accepted plus rejected records.
+
+### Planned data-quality enhancements
+
+- Required account ID validation and account/customer reference integrity.
+- Supported currency validation and currency normalization.
+- Transaction-type/sign consistency rules.
+- Cross-batch duplicate detection and historical transaction uniqueness.
+- Financial control-total reconciliation, including transaction amount totals.
+- Additional validation and recovery controls for persisted Silver batches.
 
 ## Roadmap
 
-1. **Bronze v1 — complete:** explicit schema, header validation, audit metadata, configurable local execution, Parquet persistence, batch rerun safety, and automated smoke/integration tests.
-2. Add Silver parsing, standardization, and data-quality rules while preserving Bronze source evidence.
-3. Add structured rejected-record datasets and deterministic duplicate handling.
-4. Add reconciliation controls for row counts and financial control totals.
-5. Build Gold daily transaction, account-balance, exception, and month-over-month datasets.
-6. Introduce Delta Lake persistence and MERGE-based incremental processing where it improves the design.
-7. Add configurable local/Databricks execution and validate the pipeline on an actual Databricks workspace before claiming Databricks execution.
-8. Add PySpark orchestration, structured run logging, and failure-recovery behavior.
-9. Add CI validation and expand architecture/operational documentation.
-10. Evaluate Spark query plans and performance behavior with appropriately larger test data.
+1. **Bronze v1 — complete:** Explicit schema, header validation, audit metadata, configurable local execution, Parquet persistence, batch rerun safety, and automated tests.
+2. **Silver transformations — complete:** Transaction parsing, normalization, date/amount/type/ID validation, duplicate-ID detection, accepted/rejected separation, structured rejection reasons, and row-count reconciliation.
+3. **Silver persistence — in progress:** Batch-scoped accepted/rejected Parquet writes and same-batch rerun tests are implemented locally; batch isolation validation and partial-failure recovery remain outstanding.
+4. **Advanced financial data quality — planned:** Account and currency reference validation, cross-batch duplicate detection, transaction-type/sign consistency, and financial control-total reconciliation.
+5. **Gold analytical datasets — planned:** Daily transaction summaries, account balances, exception reporting, and month-over-month analysis.
+6. **Delta Lake — planned:** Evaluate Delta persistence and MERGE-based incremental processing where they improve reliability and maintainability.
+7. **Databricks execution — planned:** Introduce configurable execution environments and validate the pipeline on an actual Databricks workspace before claiming Databricks experience.
+8. **PySpark orchestration — planned:** End-to-end pipeline execution, structured run logging, failure handling, and recovery.
+9. **CI/CD — planned:** Automated test execution and expanded architecture/operational documentation.
+10. **Performance evaluation — planned:** Analyze Spark query plans and test performance using appropriately larger datasets.
 
 ## Limitations
 
 - The financial data is synthetic practice data, not production financial data.
 - Bronze v1 is batch-file ingestion; there is no streaming implementation.
 - Bronze persistence is local Parquet, not Delta Lake.
-- Silver business validation and Gold analytics are not implemented yet.
+- Silver transformations and row-count reconciliation are implemented, but Silver persistence, end-to-end execution, and Gold analytics are not yet complete.
+- Silver duplicate-ID detection currently operates within the processed dataset; historical cross-batch uniqueness is not enforced.
+- Silver row-count reconciliation does not provide financial control-total reconciliation or guarantee transaction-level financial correctness.
+- Silver accepted and rejected Parquet outputs are written independently; atomic publication and recovery from partial-write failures have not yet been implemented.
 - The PySpark pipeline has not been deployed to cloud infrastructure or validated on Databricks.
 - There is no production scheduler/orchestrator for the PySpark pipeline.
 - CI/CD is not implemented.

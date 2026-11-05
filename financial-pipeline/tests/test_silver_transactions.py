@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+import tempfile
 
 from pyspark.sql import SparkSession
 
@@ -275,3 +276,96 @@ class TestSilverTransactions(unittest.TestCase):
                 test_cases[row_amount],
                 f"Unexpected validation result for amount {row_amount}"
             )
+
+    def test_silver_batch_persistence(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_root = Path(temp_dir)
+
+            accepted_df, rejected_df = silver.split_silver_transactions(self.silver_df)
+            batch_date = date(2026, 9, 1)
+
+            # Write for the Sept 1 Batch
+            silver.write_silver_batch(
+                accepted_df,
+                rejected_df,
+                batch_date,
+                output_root
+            )
+
+            accepted_path = output_root / f"BatchDate={batch_date.isoformat()}" / "accepted"
+            rejected_path = output_root / f"BatchDate={batch_date.isoformat()}" / "rejected"
+
+            persisted_accepted_df = self.spark.read.parquet(str(accepted_path))
+            self.assertEqual(persisted_accepted_df.count(), accepted_df.count())
+
+            persisted_rejected_df = self.spark.read.parquet(str(rejected_path))
+            self.assertEqual(persisted_rejected_df.count(), rejected_df.count())
+
+            #verify that accepted transaction IDs survive the Parquet write/read cycle
+            expected_ids = {
+                row.TransactionId
+                for row in accepted_df.select("TransactionId").collect()
+            }
+
+            persisted_ids = {
+                row.TransactionId
+                for row in persisted_accepted_df.select("TransactionId").collect()
+            }
+
+            self.assertEqual(persisted_ids, expected_ids)
+
+            # Rerun September 1 to verify overwrite does not accumulate rows
+            silver.write_silver_batch(
+                            accepted_df,
+                            rejected_df,
+                            batch_date,
+                            output_root
+                        )
+
+            second_accepted_df = self.spark.read.parquet(str(accepted_path))
+            self.assertEqual(second_accepted_df.count(), accepted_df.count())
+
+            second_rejected_df = self.spark.read.parquet(str(rejected_path))
+            self.assertEqual(second_rejected_df.count(), rejected_df.count())
+
+            second_batch_date = date(2026, 9, 2)
+
+            # Write for the Sept 2 Batch
+            silver.write_silver_batch(
+                                        accepted_df,
+                                        rejected_df,
+                                        second_batch_date,
+                                        output_root
+                                    )
+
+            # Read Sept 1 files
+            accepted_after_second_batch_df = self.spark.read.parquet(str(accepted_path))
+            self.assertEqual(accepted_after_second_batch_df.count(), accepted_df.count())
+
+            rejected_after_second_batch_df = self.spark.read.parquet(str(rejected_path))
+            self.assertEqual(rejected_after_second_batch_df.count(), rejected_df.count())
+
+            # Verify Sept 2 accepted and rejected paths
+            second_batch_accepted_path = output_root / f"BatchDate={second_batch_date.isoformat()}" / "accepted"
+            second_batch_rejected_path = output_root / f"BatchDate={second_batch_date.isoformat()}" / "rejected"
+
+            second_batch_accepted_df = self.spark.read.parquet(str(second_batch_accepted_path))
+            self.assertEqual(second_batch_accepted_df.count(), accepted_df.count())
+
+            second_batch_rejected_df = self.spark.read.parquet(str(second_batch_rejected_path))
+            self.assertEqual(second_batch_rejected_df.count(), rejected_df.count())
+
+            # Reprocess September 1
+            silver.write_silver_batch(
+                                        accepted_df,
+                                        rejected_df,
+                                        batch_date,
+                                        output_root
+                                    )
+
+            # Verify September 2 remains intact
+            second_batch_accepted_after_rerun_df = self.spark.read.parquet(str(second_batch_accepted_path))
+            self.assertEqual(second_batch_accepted_after_rerun_df.count(), accepted_df.count())
+
+            second_batch_rejected_after_rerun_df = self.spark.read.parquet(str(second_batch_rejected_path))
+            self.assertEqual(second_batch_rejected_after_rerun_df.count(), rejected_df.count())
