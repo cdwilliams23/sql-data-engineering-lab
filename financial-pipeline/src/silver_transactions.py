@@ -1,6 +1,8 @@
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
+from datetime import date
+from pathlib import Path
 
 def parse_transaction_fields(bronze_df: DataFrame) -> DataFrame:
     """Parse Bronze transaction fields into Silver data types."""
@@ -148,3 +150,18 @@ def transform_silver_transactions(bronze_df: DataFrame) -> DataFrame:
         .transform(add_rejection_reasons)
     )
     return silver_df
+
+
+def write_silver_batch(
+        accepted_df: DataFrame,
+        rejected_df: DataFrame,
+        batch_date: date,
+        output_root: Path
+    ) -> None:
+
+    batch_path = output_root / f"BatchDate={batch_date.isoformat()}"
+    accepted_path = batch_path / "accepted"
+    rejected_path = batch_path / "rejected"
+
+    accepted_df.write.mode("overwrite").parquet(str(accepted_path))
+    rejected_df.write.mode("overwrite").parquet(str(rejected_path))
